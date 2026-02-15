@@ -1,0 +1,19 @@
+version: "3.9"
+
+services:
+  climate-ingestor:
+    build: ../services/climate-ingestor
+    ports:
+      - "3001:3000"
+
+  scenario-engine:
+    build: ../services/scenario-engine
+    ports:
+      - "8000:8000"
+
+  api-gateway:
+    build: ../services/api-gateway
+    ports:
+      - "3000:3000"
+    depends_on:
+      - scenario-engine

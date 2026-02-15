@@ -1,0 +1,78 @@
+# NestJS/Node.js
+# ---
+# Dependencies
+node_modules/
+
+# Build artifacts
+dist/
+/npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+pnpm-debug.log*
+.nyc_output/
+/coverage/
+.temp/
+.tmp/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Editors and IDEs
+.idea/ # For IntelliJ/WebStorm
+.vscode/ # Uncomment if you want to ignore VS Code settings
+
+# Python
+# ---
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment
+venv/
+.venv/
+env/
+.env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+
+# Packaging
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+
+# Specific IDE files (e.g. PyCharm)
+.idea/
+.vscode/ # Also applies to Node.js section
+
+# OS and temporary files
+# ---
+.DS_Store
+*.log
+npm-debug.log*
+yarn-debug.log*
