@@ -17,3 +17,10 @@ services:
       - "3000:3000"
     depends_on:
       - scenario-engine
+
+  satellite-imagery:
+  build: ./services/satellite-imagery
+  volumes:
+    - imagery_data:/data
+  ports:
+    - "4003:3000"

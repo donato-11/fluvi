@@ -1,3 +1,4 @@
+from unittest import result
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
@@ -16,6 +17,8 @@ def get_db():
 
 @router.get("/")
 def list_basins(db: Session = Depends(get_db)):
-    result = db.execute(text("select * from basins")).fetchall()
-    return [dict(row) for row in result]
+    result = db.execute(text("select * from basins"))
+    rows = result.mappings().all()
+    return rows
+
 
