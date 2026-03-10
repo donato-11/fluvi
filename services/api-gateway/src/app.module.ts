@@ -10,7 +10,6 @@ import { ScenariosModule } from './scenarios/scenarios.module';
 import { StreamingModule } from './streaming/streaming.module';
 import { RegionsModule } from './regions/regions.module';
 
-
 @Module({
   imports: [
     AuthModule, 

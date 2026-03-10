@@ -170,4 +170,39 @@ export class RegionsService {
 
   }
 
+  async searchBasins(query: string) {
+
+    if (!query || query.length < 2) {
+      return [];
+    }
+
+    const { data, error } = await this.supabase
+      .from("basins")
+      .select("id, name")
+      .ilike("name", `%${query}%`)
+      .limit(10);
+
+    if (error) {
+      console.error(error);
+      throw new InternalServerErrorException("Search failed");
+    }
+
+    return data;
+  }
+
+  async findOne(id: string) {
+
+    const { data, error } = await this.supabase
+      .from("basins")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error || !data) {
+      throw new BadRequestException("Region not found");
+    }
+
+    return data;
+  }
+
 }

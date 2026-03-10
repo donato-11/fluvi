@@ -3,7 +3,10 @@ import {
   Post,
   Body,
   UploadedFile,
-  UseInterceptors
+  UseInterceptors,
+  Get,
+  Query,
+  Param,
 } from '@nestjs/common';
 
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -24,6 +27,16 @@ export class RegionsController {
     ) {
   
     return this.regionsService.create(dto, file);
+    }
+
+   @Get("search")
+    async search(@Query("q") query: string) {
+      return this.regionsService.searchBasins(query);
+    }
+
+    @Get(":id")
+    async findOne(@Param("id") id: string) {
+      return this.regionsService.findOne(id);
     }
 
 }
