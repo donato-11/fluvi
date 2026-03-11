@@ -39,6 +39,9 @@ export class RegionsService {
     return new Promise((resolve, reject) => {
 
       const process = spawn("gdal_translate", [
+        "-outsize", "1024", "1024",
+        "-b", "1",
+        "-scale",
         "-ot", "UInt16",
         "-of", "PNG",
         input,
@@ -122,7 +125,7 @@ export class RegionsService {
       );
 
       const textureBuffer = Buffer.from(imageryResponse.data);
-
+      
       const textureName = `${Date.now()}_texture.png`;
 
       const { error: textureError } = await this.supabase
@@ -137,7 +140,6 @@ export class RegionsService {
 
       const textureUrl =
         `${process.env.SUPABASE_URL}/storage/v1/object/public/color_texture/${textureName}`;
-
       const { error: dbError } = await this.supabase
         .from("basins")
         .insert({
@@ -146,18 +148,18 @@ export class RegionsService {
           color_texture_url: textureUrl,
           resolution: 30
         });
-
-      if (dbError) throw dbError;
-
-      return {
-        status: "created",
-        region: {
-          name: dto.name,
-          heightmap_url: heightmapUrl,
-          color_texture_url: textureUrl
-        }
-      };
-
+        
+        if (dbError) throw dbError;
+        
+        return {
+          status: "created",
+          region: {
+            name: dto.name,
+            heightmap_url: heightmapUrl,
+            color_texture_url: textureUrl
+          }
+        };
+        
     } catch (error) {
 
       console.error(error);
