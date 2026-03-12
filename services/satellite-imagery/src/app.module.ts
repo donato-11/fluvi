@@ -9,7 +9,7 @@ import { ConfigModule } from '@nestjs/config/dist/config.module';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
-    ImageryModule
+    ImageryModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,26 +1,35 @@
-version: "3.9"
-
 services:
   climate-ingestor:
     build: ../services/climate-ingestor
     ports:
-      - "3001:3000"
+      - "3002:3001"
+    environment:
+      - SCENARIO_ENGINE_URL=http://scenario-engine:8000
 
   scenario-engine:
     build: ../services/scenario-engine
     ports:
       - "8000:8000"
+    environment:
+      - DATABASE_URL=databaseurl
+      - API_GATEWAY_URL=http://api-gateway:3001
 
   api-gateway:
     build: ../services/api-gateway
     ports:
-      - "3000:3000"
+      - "3001:3000"
     depends_on:
       - scenario-engine
+      - climate-ingestor
+    environment:
+      - SCENARIO_ENGINE_URL=http://scenario-engine:8000
 
   satellite-imagery:
-  build: ./services/satellite-imagery
-  volumes:
-    - imagery_data:/data
-  ports:
-    - "4003:3000"
+    build: ../services/satellite-imagery
+    volumes:
+      - imagery_data:/data
+    ports:
+      - "3003:3000"
+
+volumes:
+  imagery_data:

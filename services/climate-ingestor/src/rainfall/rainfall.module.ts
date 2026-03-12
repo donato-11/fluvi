@@ -1,8 +1,11 @@
+// services/climate-ingestor/src/rainfall/rainfall.module.ts
 import { Module } from '@nestjs/common';
-import { RainfallService } from './rainfall.service';
+import { HttpModule } from '@nestjs/axios';          // ← fix: importar HttpModule
 import { RainfallGateway } from './rainfall.gateway';
+import { RainfallService } from './rainfall.service';
 
 @Module({
-  providers: [RainfallService, RainfallGateway]
+  imports: [HttpModule],                              // ← fix: registrar HttpModule
+  providers: [RainfallGateway, RainfallService],
 })
 export class RainfallModule {}
