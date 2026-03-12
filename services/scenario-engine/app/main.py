@@ -1,8 +1,8 @@
 from fastapi import FastAPI
-from app.api import ingest, basins
 from dotenv import load_dotenv
-from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.api import ingest, basins, scenarios
 
 app = FastAPI(title="Fluvi Scenario Engine")
 
@@ -22,3 +22,4 @@ load_dotenv()
 
 app.include_router(ingest.router)
 app.include_router(basins.router)
+app.include_router(scenarios.router)
