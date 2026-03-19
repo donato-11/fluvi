@@ -15,6 +15,9 @@ export interface WaterLevelUpdate {
   accumulatedRain: number;
   step: number;
   timestamp: number;
+  manningLevel?:       number | null;
+  lstmPredictedLevel?: number | null;
+  blendAlpha?:         number;
 }
 
 @WebSocketGateway({ cors: { origin: '*' }, path: '/ws' })

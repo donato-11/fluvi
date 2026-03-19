@@ -113,6 +113,8 @@ fluvi
 │     │  │  ├─ config.py
 │     │  │  ├─ database.py
 │     │  │  ├─ hydrology.py
+│     │  │  ├─ lstm_model
+│     │  │  ├─ lstm_predictor.py
 │     │  │  ├─ physics.py
 │     │  │  ├─ state.py
 │     │  │  └─ __init__.py
@@ -126,6 +128,8 @@ fluvi
 │     │  │  └─ __init__.py
 │     │  ├─ rain-simulator
 │     │  │  └─ main.py
+│     │  ├─ scripts
+│     │  │  └─ train_lstm.py
 │     │  └─ __init__.py
 │     ├─ Dockerfile
 │     └─ requirements.txt

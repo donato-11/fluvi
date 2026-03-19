@@ -1,0 +1,30 @@
+{
+  "training_samples": 456,
+  "validation_samples": 114,
+  "epochs_run": 35,
+  "final_train_loss": 0.0021966593340039253,
+  "final_val_loss": 0.005855700466781855,
+  "mse_normalized": 0.004564216826111078,
+  "mse_meters_sq": 0.0696077064225182,
+  "rmse_meters": 0.2638327243207677,
+  "mae_meters": 0.1867138978686556,
+  "window_size": 12,
+  "scaler": {
+    "x_min": 0.0,
+    "x_max": 630.0,
+    "y_min": 0.0,
+    "y_max": 3.90522
+  },
+  "architecture": {
+    "layers": [
+      "LSTM(64)",
+      "Dropout(0.2)",
+      "LSTM(32)",
+      "Dense(16,relu)",
+      "Dense(1,sigmoid)"
+    ],
+    "optimizer": "Adam(lr=1e-3)",
+    "loss": "MSE",
+    "forget_gate": "f_t = \u03c3(W_f \u00b7 [h_{t-1}, x_t] + b_f)"
+  }
+}

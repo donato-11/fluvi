@@ -84,7 +84,6 @@ export class RegionsService {
       fs.mkdirSync("uploads", { recursive: true });
 
       const tifPath = `uploads/${Date.now()}_${file.originalname}`;
-      fs.writeFileSync(tifPath, file.buffer);
 
       const heightmapPath = tifPath.replace(/\.tiff?$/i, ".png");
 
@@ -115,9 +114,9 @@ export class RegionsService {
           bbox: [west, south, east, north],
           from: "2018-01-01",
           to: "2026-02-01",
-          maxCloud: 10,
-          width: 1024,
-          height: 1024
+          maxCloud: 5,
+          width: 1300,
+          height: 1300
         },
         {
           responseType: "arraybuffer"
