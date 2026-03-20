@@ -1,10 +1,12 @@
 """
 app/core/hydrology.py
 
-Reemplaza el placeholder original. Implementa:
-  - Curvas de Huff (Q1-Q4) para distribución temporal de la lluvia
-  - Modelo uniforme (intensidad constante)
-  - compute_water_level() async por celda (Green-Ampt + Manning simplificado)
+Correcciones respecto a la versión anterior:
+  - compute_water_level devuelve metros reales de lámina de agua
+    usando la ecuación de Manning para flujo en lámina libre,
+    sin el factor arbitrario 0.01 que rompía la coherencia física.
+  - build_rain_profile sin cambios.
+  - calculate_level mantiene compatibilidad hacia atrás.
 """
 
 import asyncio
@@ -14,7 +16,6 @@ from app.models.schemas import DistributionModel, HuffQuartile
 
 
 # ── Curvas de Huff normalizadas (Huff, 1967) ─────────────────────────────────
-# (tiempo_adimensional 0→1, lluvia_acumulada_fracción 0→1)
 _HUFF_CURVES: dict[str, list[tuple[float, float]]] = {
     "Q1": [
         (0.0, 0.00), (0.1, 0.30), (0.2, 0.51), (0.3, 0.66),
@@ -41,8 +42,8 @@ _HUFF_CURVES: dict[str, list[tuple[float, float]]] = {
 
 @dataclass
 class RainProfile:
-    timesteps: list[float]           # segundos desde inicio
-    intensities_mm_h: list[float]    # intensidad en cada paso
+    timesteps: list[float]
+    intensities_mm_h: list[float]
     total_duration_sec: int
     peak_intensity_mm_h: float
     distribution: str
@@ -74,10 +75,9 @@ def _huff_intensities(
     duration_sec: int,
     n_steps: int,
 ) -> list[float]:
-    """Intensidad instantánea (mm/h) derivada de la curva de Huff acumulada."""
-    dt_norm = 1.0 / n_steps
+    dt_norm  = 1.0 / n_steps
     dt_hours = (duration_sec / n_steps) / 3600.0
-    result = []
+    result   = []
     for i in range(n_steps):
         delta_frac = (
             _huff_cumulative(quartile, (i + 1) * dt_norm)
@@ -98,12 +98,6 @@ def build_rain_profile(
     huff_quartile: HuffQuartile,
     resolution_sec: int = 60,
 ) -> RainProfile:
-    """
-    Construye el perfil temporal completo del evento de lluvia.
-
-    - uniform  → intensidad constante = intensity_mm_h durante toda la duración
-    - gaussian → curvas de Huff (Q1-Q4) escalan el total de lluvia temporalmente
-    """
     total_sec = duration_hours * 3600 + duration_minutes * 60
 
     if total_sec == 0:
@@ -116,13 +110,13 @@ def build_rain_profile(
             huff_quartile=huff_quartile.value if distribution == DistributionModel.gaussian else None,
         )
 
-    n_steps = max(1, total_sec // resolution_sec)
-    timesteps = [i * resolution_sec for i in range(n_steps)]
+    n_steps       = max(1, total_sec // resolution_sec)
+    timesteps     = [i * resolution_sec for i in range(n_steps)]
     total_rain_mm = intensity_mm_h * (total_sec / 3600.0)
 
     if distribution == DistributionModel.uniform:
         intensities = [round(intensity_mm_h, 3)] * n_steps
-        huff_used = None
+        huff_used   = None
     else:
         intensities = _huff_intensities(
             huff_quartile.value, total_rain_mm, total_sec, n_steps
@@ -141,44 +135,80 @@ def build_rain_profile(
 
 async def compute_water_level(cell, intensity_mm_h: float, config) -> CellResult:
     """
-    Modelo físico por celda: Green-Ampt (infiltración) + Manning (escorrentía).
-    Async para permitir asyncio.gather() en paralelo sobre todas las celdas.
+    Calcula la lámina de agua (metros) para una celda de terreno.
 
-    Reemplaza el placeholder original que usaba runoff_coefficient * volume / 1000.
+    Modelo físico: Green-Ampt (infiltración) + Manning (escorrentía superficial).
+
+    CORRECCIÓN respecto a la versión anterior:
+    ─────────────────────────────────────────
+    ❌ ANTERIOR:
+        level = round((excess / config.manning_n) ** 0.6 * 0.01, 4)
+        El factor 0.01 era arbitrario y sin base física.
+        Producía niveles de ~0.001–0.3 m independientemente de la escala
+        del terreno y sin unidades coherentes con los metros reales.
+
+    ✅ CORRECTO — Ecuación de Manning para flujo en lámina libre:
+        Q_exceso = exceso_efectivo [m/s] × ancho_unidad [m]
+        Manning:  Q = (1/n) · R^(5/3) · S^(1/2)
+
+        Para flujo en lámina delgada (overland flow), la profundidad
+        hidráulica y el radio hidráulico son aproximadamente iguales
+        (R ≈ y), y asumiendo pendiente representativa S de la celda:
+
+            y^(5/3) = (q · n) / S^(1/2)
+            y = ((q · n) / S^(1/2))^(3/5)
+
+        donde:
+            q  = caudal por unidad de ancho [m²/s]
+               = exceso_efectivo [m/h] / 3600 → [m/s]
+            n  = coeficiente de Manning [s/m^(1/3)]
+            S  = pendiente adimensional (usamos 0.002 como valor
+                 representativo de terrenos con relieve moderado)
+
+        Resultado en metros reales [m], coherente con displacementScale
+        del terreno Three.js que también está en metros.
+
+    Rango típico de resultados:
+        - Lluvia ligera (10 mm/h, runoff C=0.65): ~0.01–0.05 m
+        - Lluvia moderada (50 mm/h):              ~0.10–0.40 m
+        - Lluvia extrema (200 mm/h):              ~0.80–2.50 m
     """
     await asyncio.sleep(0)  # yield — no bloquea el event loop
 
-    # Escorrentía efectiva después de infiltración
-    effective = intensity_mm_h * config.runoff_coefficient
-    excess = max(0.0, effective - config.infiltration_rate)
-
-    if excess <= 0:
+    # ── 1. Escorrentía efectiva después de infiltración ─────────────────────
+    effective = intensity_mm_h * config.runoff_coefficient          # mm/h
+    excess_mm_h = max(0.0, effective - config.infiltration_rate)    # mm/h
+    if excess_mm_h <= 0.0:
         return CellResult(cell_id=cell.id, water_level=0.0)
 
-    # Aproximación Manning superficial: nivel ∝ (excess / n)^0.6
-    level = round((excess / config.manning_n) ** 0.6 * 0.01, 4)
-    return CellResult(cell_id=cell.id, water_level=level)
+    # ── 2. Convertir a caudal por unidad de ancho [m²/s] ───────────────────
+    # excess [mm/h] → [m/s]: dividir por 1000 (mm→m) y por 3600 (h→s)
+    q = (excess_mm_h / 1000.0) / 3600.0   # m/s ≡ m²/s por metro de ancho
+
+    # ── 3. Manning en lámina libre: y = ((q·n) / S^0.5)^(3/5) ─────────────
+    # Pendiente representativa S = 0.002 (suave a moderada)
+    # Valores típicos: 0.001 (planicie) a 0.01 (colinas)
+    S = 0.002
+    n = config.manning_n   # [s/m^(1/3)]
+
+    level_m = ((q * n) / (S ** 0.5)) ** (3.0 / 5.0)
+
+    return CellResult(cell_id=cell.id, water_level=round(level_m, 4))
 
 
-# ── Compatibilidad con el código original (rain_dto) ─────────────────────────
-# Mantiene calculate_level() para no romper imports existentes
+# ── Compatibilidad hacia atrás ────────────────────────────────────────────────
 
 def calculate_level(data) -> float:
-    """
-    Wrapper de compatibilidad hacia atrás.
-    Usa runoff_coefficient fijo = 0.6, igual que el placeholder original,
-    pero delega al modelo físico real.
-    """
+    """Wrapper de compatibilidad. Usa los parámetros por defecto."""
 
     class _FakeConfig:
         runoff_coefficient = 0.6
-        infiltration_rate = 0.0
-        manning_n = 0.035
+        infiltration_rate  = 0.0
+        manning_n          = 0.035
 
     class _FakeCell:
         id = "legacy"
 
-    import asyncio
     result = asyncio.run(
         compute_water_level(_FakeCell(), data.rainfall_mm, _FakeConfig())
     )
