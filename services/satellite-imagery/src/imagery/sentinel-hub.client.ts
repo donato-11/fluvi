@@ -42,7 +42,7 @@ export class SentinelHubClient {
     bbox: [number, number, number, number],
     from: string,
     to: string,
-    maxCloud = 20,
+    maxCloud = 5,
     width = 1024,
     height = 1024,
   ): Promise<Buffer> {
@@ -86,7 +86,10 @@ export class SentinelHubClient {
                 from: `${from}T00:00:00Z`,
                 to: `${to}T23:59:59Z`,
               },
-              maxCloudCoverage: maxCloud,
+              maxCloudCoverage: 30,
+            },
+            processing: {
+              upsampling: 'BICUBIC',
             },
           },
         ],

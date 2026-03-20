@@ -48,9 +48,14 @@ export class RegionsService {
         output
       ]);
 
+      let stderr = "";
+      process.stderr.on("data", (data) => {
+        stderr += data.toString();
+      });
+
       process.on("close", (code) => {
         if (code === 0) resolve();
-        else reject(new Error("Heightmap conversion failed"));
+        else reject(new Error(`Heightmap conversion failed (code ${code}): ${stderr}`));
       });
 
     });
@@ -87,6 +92,8 @@ export class RegionsService {
 
       const heightmapPath = tifPath.replace(/\.tiff?$/i, ".png");
 
+      fs.writeFileSync(tifPath, file.buffer);
+
       await this.generateHeightmap(tifPath, heightmapPath);
 
       const heightmapBuffer = fs.readFileSync(heightmapPath);
@@ -112,7 +119,7 @@ export class RegionsService {
         "http://localhost:3003/imagery/true-color",
         {
           bbox: [west, south, east, north],
-          from: "2018-01-01",
+          from: "2012-01-01",
           to: "2026-02-01",
           maxCloud: 5,
           width: 1300,
@@ -167,8 +174,20 @@ export class RegionsService {
         "Region creation failed"
       );
 
+    } finally {
+      try {
+        const uploadsDir = path.join(process.cwd(), "uploads");
+        if (fs.existsSync(uploadsDir)) {
+          const files = fs.readdirSync(uploadsDir);
+          for (const f of files) {
+            fs.unlinkSync(path.join(uploadsDir, f));
+          }
+          console.log(`[cleanup] /uploads vaciado (${files.length} archivos)`);
+        }
+      } catch (e) {
+        console.error("[cleanup] error al limpiar /uploads:", e.message);
+      }
     }
-
   }
 
   async searchBasins(query: string) {
