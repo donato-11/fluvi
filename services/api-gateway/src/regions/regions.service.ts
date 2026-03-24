@@ -41,6 +41,55 @@ export class RegionsService {
     process.env.SUPABASE_SERVICE_KEY!,
   );
 
+  // ── Normalización de nombre ───────────────────────────────────────────────
+  /**
+   * Elimina acentos y convierte a minúsculas para comparaciones
+   * independientes de mayúsculas y diacríticos.
+   * Ej: "Pánuco" → "panuco", "PANUCO" → "panuco"
+   */
+  private normalizeName(str: string): string {
+    return str
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+  }
+
+  /**
+   * Comprueba si ya existe una región con el mismo nombre,
+   * ignorando mayúsculas/minúsculas y acentos.
+   *
+   * Estrategia de dos pasos:
+   *  1. ilike en Supabase → eficiente para coincidencias case-insensitive exactas.
+   *  2. Comparación JS con normalización de acentos → atrapa casos como
+   *     "Pánuco" vs "Panuco" que ilike no detectaría.
+   */
+  private async checkDuplicateName(name: string): Promise<boolean> {
+    const normalizedInput = this.normalizeName(name);
+
+    // Paso 1: coincidencia case-insensitive directa (rápida, usa índice)
+    const { data: ilikeData, error: ilikeError } = await this.supabase
+      .from('basins')
+      .select('name')
+      .ilike('name', name.trim());
+
+    if (!ilikeError && ilikeData && ilikeData.length > 0) {
+      return true;
+    }
+
+    // Paso 2: normalización de acentos en JS sobre todos los registros
+    // Solo se ejecuta si ilike no encontró nada (conjunto pequeño en proyectos académicos)
+    const { data: allData, error: allError } = await this.supabase
+      .from('basins')
+      .select('name');
+
+    if (allError || !allData) return false;
+
+    return allData.some(
+      (row) => this.normalizeName(row.name) === normalizedInput,
+    );
+  }
+
   // ── DMS → decimal ───────────────────────────────────────────────────────────
 
   private dmsToDecimal(dms: string): number {
@@ -53,16 +102,6 @@ export class RegionsService {
     return sign * (Math.abs(deg) + min / 60 + sec / 3600);
   }
 
-  /**
-   * Calcula el bounding box cuadrado centrado en el bbox original.
-   *
-   * El lado del cuadrado = lado menor del bbox original, garantizando
-   * que el recorte siempre esté dentro del TIF original sin NODATA.
-   *
-   * La conversión grados ↔ metros usa la latitud central para corregir
-   * la convergencia de meridianos (los grados de longitud son más cortos
-   * cerca de los polos).
-   */
   private computeSquareBbox(
     north: number, south: number,
     east:  number, west:  number,
@@ -76,10 +115,8 @@ export class RegionsService {
     const widthM  = Math.abs(east - west) * degToM * cosLat;
     const heightM = Math.abs(north - south) * degToM;
 
-    // Lado del cuadrado = lado menor para evitar zonas sin datos (NODATA)
     const sideM = Math.min(widthM, heightM);
 
-    // Convertir el semilado de metros a grados en cada eje
     const halfLat = (sideM / 2) / degToM;
     const halfLon = (sideM / 2) / (degToM * cosLat);
 
@@ -92,19 +129,6 @@ export class RegionsService {
     };
   }
 
-  /**
-   * Paso 1 — Recortar el TIF original al bbox cuadrado.
-   *
-   * Se usa `gdalwarp` con `-te` (target extent) en grados y `-ts 1024 1024`
-   * para forzar píxeles cuadrados. Esto garantiza que el heightmap resultante
-   * cubra exactamente el mismo área que la textura satelital.
-   *
-   * ¿Por qué antes de la conversión a PNG?
-   *   - gdalwarp trabaja sobre GeoTIFF y respeta la proyección original.
-   *   - Asegura que min/max de elevación (gdalinfo) correspondan solo al
-   *     área cuadrada, no al bbox rectangular original.
-   *   - La textura satelital se pide con el mismo bbox cuadrado → coherencia.
-   */
   private clipToSquare(
     input: string,
     output: string,
@@ -114,8 +138,8 @@ export class RegionsService {
       const proc = spawn('gdalwarp', [
         '-te',    String(sq.west), String(sq.south),
                   String(sq.east), String(sq.north),
-        '-ts',    '1024', '1024',   // píxeles cuadrados
-        '-r',     'bilinear',        // remuestreo suave
+        '-ts',    '1024', '1024',
+        '-r',     'bilinear',
         '-overwrite',
         input,
         output,
@@ -130,12 +154,6 @@ export class RegionsService {
     });
   }
 
-  /**
-   * Paso 2 — Extraer min/max de elevación del TIF YA RECORTADO.
-   *
-   * Se llama sobre el TIF cuadrado (no el original) para que los valores
-   * correspondan exactamente al área que se va a renderizar.
-   */
   private extractElevationRange(tifPath: string): ElevationRange {
     try {
       const output = execSync(`gdalinfo -mm "${tifPath}" 2>&1`, { encoding: 'utf8' });
@@ -160,16 +178,6 @@ export class RegionsService {
     }
   }
 
-  /**
-   * Paso 3 — Convertir TIF cuadrado a PNG heightmap UInt16.
-   *
-   * `-scale minElev maxElev 0 65535` escala de forma explícita y absoluta:
-   *   pixel 0     → min_elevation metros
-   *   pixel 65535 → max_elevation metros
-   *
-   * Esto permite reconstruir la elevación real en el shader:
-   *   elevation_m = (pixel / 65535) × vertical_scale + min_elevation
-   */
   private convertToHeightmapPng(
     input: string,
     output: string,
@@ -200,6 +208,14 @@ export class RegionsService {
   async create(dto: CreateRegionDto, file: Express.Multer.File) {
     if (!file) throw new BadRequestException('TIF file is required');
 
+    // ── Validación de nombre duplicado ────────────────────────────────────────
+    const duplicate = await this.checkDuplicateName(dto.name);
+    if (duplicate) {
+      throw new BadRequestException(
+        `Ya existe una región con el nombre "${dto.name}". Elige un nombre diferente.`,
+      );
+    }
+
     // Coordenadas del bbox del usuario (rectangulares)
     const north = this.dmsToDecimal(dto.north);
     const south = this.dmsToDecimal(dto.south);
@@ -211,7 +227,6 @@ export class RegionsService {
     if (north <= south) throw new BadRequestException('North must be greater than south');
     if (east  <= west)  throw new BadRequestException('East must be greater than west');
 
-    // Calcular bbox cuadrado centrado
     const sq = this.computeSquareBbox(north, south, east, west);
 
     console.log(
@@ -219,10 +234,6 @@ export class RegionsService {
       `${(Math.abs(east-west)*Math.PI/180*EARTH_RADIUS_M*Math.cos((north+south)/2*Math.PI/180)).toFixed(0)} × ` +
       `${(Math.abs(north-south)*Math.PI/180*EARTH_RADIUS_M).toFixed(0)} m` +
       ` → cuadrado: ${sq.sideM.toFixed(0)} × ${sq.sideM.toFixed(0)} m`,
-    );
-    console.log(
-      `[regions] Bbox cuadrado: N${sq.north.toFixed(6)} S${sq.south.toFixed(6)} ` +
-      `E${sq.east.toFixed(6)} W${sq.west.toFixed(6)}`,
     );
 
     try {
@@ -235,22 +246,13 @@ export class RegionsService {
 
       fs.writeFileSync(tifOriginal, file.buffer);
 
-      // ── 1. Recortar a cuadrado ────────────────────────────────────────────
       await this.clipToSquare(tifOriginal, tifSquare, sq);
 
-      // ── 2. Extraer elevaciones del TIF cuadrado ───────────────────────────
       const { minElevation, maxElevation } = this.extractElevationRange(tifSquare);
       const verticalScale = maxElevation - minElevation;
 
-      console.log(
-        `[regions] Elevación: ${minElevation}–${maxElevation} m ` +
-        `(rango ${verticalScale.toFixed(1)} m)`,
-      );
-
-      // ── 3. Convertir a PNG heightmap ──────────────────────────────────────
       await this.convertToHeightmapPng(tifSquare, heightmapPath, minElevation, maxElevation);
 
-      // ── 4. Subir heightmap a Supabase Storage ─────────────────────────────
       const heightmapName   = `${ts}_heightmap.png`;
       const heightmapBuffer = fs.readFileSync(heightmapPath);
 
@@ -263,11 +265,6 @@ export class RegionsService {
       const heightmapUrl =
         `${process.env.SUPABASE_URL}/storage/v1/object/public/heightmaps/${heightmapName}`;
 
-      // ── 5. Solicitar textura satelital con el bbox CUADRADO ───────────────
-      //
-      // El bbox que se envía al imagery service es el mismo cuadrado que se
-      // usó para recortar el TIF, garantizando que textura y heightmap
-      // cubran exactamente el mismo territorio.
       const imageryResponse = await axios.post(
         'http://localhost:3003/imagery/true-color',
         {
@@ -276,7 +273,7 @@ export class RegionsService {
           to:       '2026-02-01',
           maxCloud: 5,
           width:    1024,
-          height:   1024,   // cuadrada, igual que el heightmap
+          height:   1024,
         },
         { responseType: 'arraybuffer' },
       );
@@ -293,11 +290,6 @@ export class RegionsService {
       const textureUrl =
         `${process.env.SUPABASE_URL}/storage/v1/object/public/color_texture/${textureName}`;
 
-      // ── 6. Guardar en base de datos ───────────────────────────────────────
-      //
-      // Se guardan las coordenadas del bbox CUADRADO (no el original del usuario).
-      // Son los valores que usa Scene.tsx para calcular displacementScale y
-      // los que representan el área real del heightmap y la textura.
       const { error: dbError } = await this.supabase.from('basins').insert({
         name:              dto.name,
         heightmap_url:     heightmapUrl,
@@ -310,7 +302,6 @@ export class RegionsService {
         bbox_south:        sq.south,
         bbox_east:         sq.east,
         bbox_west:         sq.west,
-        // side_m es redundante (calculable) pero útil para debug y consultas
         side_m:            sq.sideM,
       });
 
@@ -334,10 +325,12 @@ export class RegionsService {
       };
 
     } catch (err) {
+      // Re-lanzar BadRequestException tal cual (ej: el duplicado detectado
+      // justo antes del insert si hubo race condition)
+      if (err instanceof BadRequestException) throw err;
       console.error('[regions] create error:', err);
       throw new InternalServerErrorException('Region creation failed');
     } finally {
-      // Limpiar todos los archivos temporales
       try {
         const dir = path.join(process.cwd(), 'uploads');
         if (fs.existsSync(dir)) {
@@ -377,7 +370,6 @@ export class RegionsService {
 
     if (error || !data) throw new BadRequestException('Region not found');
 
-    // Normalizar nombres de campo para que Scene.tsx reciba north/south/east/west
     return {
       ...data,
       north: data.bbox_north,
