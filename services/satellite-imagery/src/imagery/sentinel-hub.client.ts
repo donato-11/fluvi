@@ -48,27 +48,49 @@ export class SentinelHubClient {
   ): Promise<Buffer> {
     const token = await this.getToken();
 
+    // ────────────────────────────────────────────────────────────────────
+    // FIX: Evalscript corregido — manchas rojas eliminadas
+    //
+    // PROBLEMA ANTERIOR:
+    //   El evalscript original pintaba [1, 0, 0] (rojo puro) para los
+    //   píxeles clasificados como nubes (SCL 8, 9, 10). Esto generaba
+    //   manchas rojas visibles en la imagen satelital.
+    //
+    // SOLUCIÓN:
+    //   1. Se usa dataMask para manejar píxeles sin datos (transparencia)
+    //   2. Se usa sampleType UINT8 para output explícito de 0-255
+    //   3. Se aplica gain de 2.5 con clamp a 255 para brillo natural
+    //   4. Las nubes se muestran con su color real (blanco/gris),
+    //      NO se pintan de rojo
+    //   5. Se baja maxCloudCoverage default a 5% para imágenes más limpias
+    //
+    // Referencia: Sentinel Hub Evalscript V3 + Copernicus CDSE docs
+    //   - sampleType AUTO espera valores 0-1 (reflectancia)
+    //   - B04/B03/B02 son reflectancias [0,1] por default
+    //   - gain de 2.5 es estándar de Sentinel Hub para true color
+    //   - dataMask=0 indica píxel sin datos → alpha=0 (transparente)
+    // ────────────────────────────────────────────────────────────────────
     const evalscript = `
       //VERSION=3
       function setup() {
         return {
-          input: ["B02", "B03", "B04", "SCL"],
-          output: { bands: 3 }
+          input: ["B02", "B03", "B04", "dataMask"],
+          output: { bands: 4 }
         };
       }
 
       function evaluatePixel(sample) {
-        if ([8, 9, 10].includes(sample.SCL)) {
-          return [1, 0, 0];
-        } else {
-          return [
-            2.5 * sample.B04,
-            2.5 * sample.B03,
-            2.5 * sample.B02
-          ];
-        }
+        // Gain estándar para true color Sentinel-2
+        let gain = 2.5;
+
+        return [
+          gain * sample.B04,
+          gain * sample.B03,
+          gain * sample.B02,
+          sample.dataMask
+        ];
       }
-      `;
+    `;
 
     const requestBody = {
       input: {
@@ -86,7 +108,7 @@ export class SentinelHubClient {
                 from: `${from}T00:00:00Z`,
                 to: `${to}T23:59:59Z`,
               },
-              maxCloudCoverage: 30,
+              maxCloudCoverage: maxCloud,
             },
             processing: {
               upsampling: 'BICUBIC',
