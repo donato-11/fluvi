@@ -266,7 +266,7 @@ export class RegionsService {
         `${process.env.SUPABASE_URL}/storage/v1/object/public/heightmaps/${heightmapName}`;
 
       const imageryResponse = await axios.post(
-        'http://localhost:3003/imagery/true-color',
+        `${process.env.SATELLITE_IMAGERY_API}imagery/true-color`,
         {
           bbox:     [sq.west, sq.south, sq.east, sq.north],
           from:     '2012-01-01',

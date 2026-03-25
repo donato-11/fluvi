@@ -8,6 +8,7 @@ Cambios respecto a la versión anterior:
 """
 
 import asyncio
+import os
 import httpx
 from typing import Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks
@@ -20,7 +21,7 @@ from app.core.hydrology import build_rain_profile, compute_water_level
 from app.core.lstm_predictor import get_predictor          # ← Módulo 4
 
 router    = APIRouter(prefix="/scenarios", tags=["scenarios"])
-GATEWAY_URL = "http://localhost:3001"
+GATEWAY_URL = os.getenv("API_GATEWAY_URL", "http://localhost:3000")
 
 # ── Peso de mezcla: qué tanto pesa el LSTM vs. el modelo físico ──────────────
 # α = 1.0 → solo Manning  |  α = 0.0 → solo LSTM

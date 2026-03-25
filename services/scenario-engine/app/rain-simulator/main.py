@@ -6,6 +6,7 @@ Corre independiente (laptop, VM, Raspberry Pi, etc.)
 
 import asyncio
 import json
+import os
 import time
 import uuid
 import numpy as np
@@ -14,7 +15,7 @@ from dataclasses import dataclass, asdict
 from typing import Optional
 
 # ── Config ────────────────────────────────────────────────────────────────────
-INGESTOR_WS_URL = "ws://localhost:3001/rainfall"   # climate-ingestor WS
+INGESTOR_WS_URL = os.getenv("WS_CLIMATE_INGESTOR_URL", "ws://localhost:3001/rainfall")
 NODE_ID = f"rain-node-{uuid.uuid4().hex[:6]}"
 EMIT_INTERVAL_SEC = 2.0                             # cada 2s emite una lectura
 HEARTBEAT_INTERVAL_SEC = 5.0
