@@ -129,21 +129,17 @@ export class RegionsService {
     };
   }
 
-  private clipToSquare(
-    input: string,
-    output: string,
-    sq: SquareBbox,
-  ): Promise<void> {
+  private clipToSquare(input: string, output: string, sq: SquareBbox): Promise<void> {
     return new Promise((resolve, reject) => {
       const proc = spawn('gdalwarp', [
-        '-te',    String(sq.west), String(sq.south),
-                  String(sq.east), String(sq.north),
-        '-ts',    '1024', '1024',
-        '-r',     'bilinear',
+        '-te', String(sq.west), String(sq.south), String(sq.east), String(sq.north),
+        '-ts', '1024', '1024',
+        '-r', 'bilinear',
         '-overwrite',
-        input,
-        output,
+        input, output,
       ]);
+
+      proc.on('error', (err) => reject(err)); // ← captura ENOENT y similares
 
       let stderr = '';
       proc.stderr.on('data', (d) => { stderr += d.toString(); });
@@ -193,6 +189,8 @@ export class RegionsService {
         input,
         output,
       ]);
+
+      proc.on('error', (err) => reject(err)); //
 
       let stderr = '';
       proc.stderr.on('data', (d) => { stderr += d.toString(); });

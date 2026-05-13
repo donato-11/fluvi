@@ -1,6 +1,9 @@
 # Stage 1: Build (Compilar TypeScript)
 FROM node:20-alpine AS builder
  
+# Instalar GDAL
+RUN apk add --no-cache gdal gdal-tools
+
 WORKDIR /app
  
 # Copiar package files
