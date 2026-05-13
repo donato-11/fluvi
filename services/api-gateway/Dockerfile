@@ -25,6 +25,8 @@ RUN test -f dist/main.js && echo "✅ Build exitoso: dist/main.js existe" || (ec
  
 # Stage 2: Runtime (Ejecutar aplicación)
 FROM node:20-alpine
+
+RUN apk add --no-cache gdal gdal-tools
  
 WORKDIR /app
  
