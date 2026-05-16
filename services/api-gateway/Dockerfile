@@ -4,6 +4,8 @@ FROM node:20-alpine AS builder
 # Instalar GDAL
 RUN apk add --no-cache gdal gdal-tools
 
+RUN apk add --no-cache gdal gdal-tools gdal-driver-png
+
 WORKDIR /app
  
 # Copiar package files
@@ -27,6 +29,8 @@ RUN test -f dist/main.js && echo "✅ Build exitoso: dist/main.js existe" || (ec
 FROM node:20-alpine
 
 RUN apk add --no-cache gdal gdal-tools
+
+RUN apk add --no-cache gdal gdal-tools gdal-driver-png
  
 WORKDIR /app
  
